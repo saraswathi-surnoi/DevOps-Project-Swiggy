@@ -1,0 +1,190 @@
+Using Trivy for Docker Vulnerability Scanning in Jenkins CI/CD
+ 
+Introduction
+ 
+Trivy is an open-source vulnerability scanner that can be integrated into Jenkins pipelines to ensure container images are secure before deployment. This document outlines the steps to configure and use Trivy in a Jenkins CI/CD pipeline and how to review the scan results.
+ 
+Pre-requisites
+ 
+Jenkins Instance
+ 
+Ensure Jenkins is installed and accessible.
+ 
+Install required plugins, such as "Pipeline" and "Workspace Cleanup."
+ 
+Trivy Installed
+ 
+Install Trivy on the Jenkins build server. Follow Trivy’s installation guide.
+ 
+Docker Installed
+ 
+Trivy requires Docker to scan images.
+ 
+Access to Docker Image Repository
+ 
+Ensure Jenkins has access to the container images to be scanned.
+ 
+Pipeline Configuration
+ 
+Below is an example Jenkins pipeline that uses Trivy to scan Docker images:
+ 
+Pipeline Script
+
+--------------
+
+pipeline {
+
+    agent any
+ 
+    environment {
+
+        TRIVY_IMAGE = 'aquasec/trivy:latest'
+
+        DOCKER_IMAGE = 'my-docker-image:latest'
+
+        REPORT_FILE = 'vulnerability-report.json'
+
+    }
+ 
+    stages {
+
+        stage('Pull Docker Image') {
+
+            steps {
+
+                echo 'Pulling Docker image...'
+
+                sh 'docker pull $DOCKER_IMAGE'
+
+            }
+
+        }
+ 
+        stage('Run Trivy Scan') {
+
+            steps {
+
+                echo 'Running Trivy vulnerability scan...'
+
+                sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+
+                    -v $(pwd):/root/.cache/ $TRIVY_IMAGE image --format json \
+
+                    --output $REPORT_FILE $DOCKER_IMAGE"
+
+            }
+
+        }
+ 
+        stage('Review Vulnerabilities') {
+
+            steps {
+
+                script {
+
+                    def report = readJSON file: REPORT_FILE
+
+                    if (report.Vulnerabilities) {
+
+                        echo 'Vulnerabilities found:'
+
+                        sh "cat $REPORT_FILE"
+
+                    } else {
+
+                        echo 'No vulnerabilities found.'
+
+                    }
+
+                }
+
+            }
+
+        }
+ 
+        stage('Fail on Critical Vulnerabilities') {
+
+            steps {
+
+                echo 'Checking for critical vulnerabilities...'
+
+                sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+
+                    -v $(pwd):/root/.cache/ $TRIVY_IMAGE image --severity CRITICAL \
+
+                    --exit-code 1 $DOCKER_IMAGE"
+
+            }
+
+        }
+
+    }
+ 
+    post {
+
+        always {
+
+            echo 'Cleaning up workspace...'
+
+            cleanWs()
+
+        }
+
+    }
+
+}
+
+---------------------------
+
+Pull Docker Image
+ 
+Ensures the Docker image to be scanned is available locally.
+ 
+Run Trivy Scan
+ 
+Executes Trivy to scan the Docker image and generates a report in JSON format.
+ 
+Review Vulnerabilities
+ 
+Reads and displays the vulnerabilities from the generated report.
+ 
+You can modify this stage to send the report via email or upload it to a shared location.
+ 
+Fail on Critical Vulnerabilities
+ 
+Configures Trivy to exit with a non-zero code if any critical vulnerabilities are found, causing the Jenkins build to fail.
+ 
+Post Actions
+ 
+Cleans up the workspace to ensure no residual files are left behind.
+ 
+Viewing Scan Results
+ 
+Console Output:
+ 
+Open the Jenkins pipeline build and navigate to the Console Output.
+ 
+Trivy scan results, including vulnerabilities, will be printed here.
+ 
+JSON Report:
+ 
+The vulnerability-report.json file contains detailed vulnerability information.
+ 
+This file can be downloaded from the Build Artifacts section of Jenkins.
+
+--------------------------------------------
+
+Severity Filters:
+Modify the severity filter to include specific levels of vulnerabilities:
+trivy image --severity HIGH,CRITICAL $DOCKER_IMAGE
+ 
+Custom Formats:
+ 
+Generate reports in different formats (e.g., table, CycloneDX SBOM):
+ 
+trivy image --format cyclonedx --output sbom.xml $DOCKER_IMAGE
+ 
+Notifications:
+ 
+Integrate with tools like Slack or email to send alerts about vulnerabilities.
+ 
